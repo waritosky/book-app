@@ -1,7 +1,15 @@
 self.addEventListener("install", e => {
   e.waitUntil(
-    caches.open("app").then(cache =>
-      cache.addAll(["/", "/index.html", "/script.js"])
+    caches.open("book-app").then(cache =>
+      cache.addAll([
+        "/",
+        "/index.html",
+        "/books.html",
+        "/css/style.css",
+        "/js/script.js",
+        "/js/api.js",
+        "/js/storage.js"
+      ])
     )
   );
 });
