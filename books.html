@@ -22,14 +22,33 @@
     <nav class="bottom-nav">
       <a href="index.html" class="link-btn">← スキャン画面へ戻る</a>
     </nav>
+    <!-- 削除確認モーダル -->
+    <div id="confirmModal" class="modal" style="display:none;">
+      <div class="modal-card">
+        <p id="modalMessage" class="modal-text"></p>
+
+        <div class="modal-actions">
+          <button id="cancelBtn" class="secondary-btn">キャンセル</button>
+          <button id="confirmBtn" class="danger-btn">削除する</button>
+        </div>
+      </div>
+    </div>
+    <div id="toast" class="toast" style="display:none;"></div>
   </main>
 
   <script src="js/storage.js"></script>
   <script>
     const container = document.getElementById("bookList");
-    const books = getBooks();
+    let books = getBooks();
     const searchInput = document.getElementById("searchInput");
     const countEl = document.getElementById("count");
+    const modal = document.getElementById("confirmModal");
+    const modalMessage = document.getElementById("modalMessage");
+    const confirmBtn = document.getElementById("confirmBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const toast = document.getElementById("toast");
+
+    let targetIsbn = null;
 
     function highlight(text, keyword) {
       if (!keyword) return text;
@@ -52,9 +71,49 @@
       );
     }
 
-    renderBooks(books);
+    confirmBtn.onclick = () => {
+      if (!targetIsbn) return;
 
-    searchInput.addEventListener("input", () => {
+      deleteBook(targetIsbn);
+      modal.style.display = "none";
+      targetIsbn = null;
+
+      showToast("削除しました");
+      refreshBooks();
+    };
+
+    cancelBtn.onclick = () => {
+      modal.style.display = "none";
+      targetIsbn = null;
+    };
+
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        modal.style.display = "none";
+        targetIsbn = null;
+      }
+    };
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.style.display = "block";
+
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
+      });
+
+      setTimeout(() => {
+        toast.classList.remove("show");
+
+        setTimeout(() => {
+          toast.style.display = "none";
+        }, 200);
+      }, 1200);
+    }
+
+    function refreshBooks() {
+      books = getBooks();
+
       const keyword = searchInput.value.toLowerCase();
 
       const filtered = books.filter(book =>
@@ -63,6 +122,12 @@
       );
 
       renderBooks(filtered);
+    }
+
+    refreshBooks();
+
+    searchInput.addEventListener("input", () => {
+      refreshBooks();
     });
 
     function renderBooks(list) {
@@ -111,7 +176,9 @@
           returnBtn.className = "primary-btn";
           returnBtn.onclick = () => {
             returnBook(book.isbn);
-            location.reload();
+
+            showToast(`「${book.title}」を返却しました`);
+            refreshBooks();
           };
           actionRow.appendChild(returnBtn);
         } else {
@@ -121,8 +188,11 @@
           loanBtn.onclick = () => {
             const user = prompt("貸出相手の名前を入力");
             if (!user) return;
+
             loanBook(book.isbn, user);
-            location.reload();
+
+            showToast(`「${book.title}」を貸出しました`);
+            refreshBooks();
           };
           actionRow.appendChild(loanBtn);
         }
@@ -131,8 +201,9 @@
         delBtn.textContent = "削除";
         delBtn.className = "danger-btn";
         delBtn.onclick = () => {
-          deleteBook(book.isbn);
-          location.reload();
+          modalMessage.textContent = `「${book.title}」を削除しますか？`;
+          modal.style.display = "flex";
+          targetIsbn = book.isbn;
         };
         actionRow.appendChild(delBtn);
 
