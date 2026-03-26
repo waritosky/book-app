@@ -34,9 +34,22 @@
     function highlight(text, keyword) {
       if (!keyword) return text;
 
-      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(`(${escaped})`, "gi");
       return text.replace(regex, "<mark>$1</mark>");
+    }
+
+    function getFallbackImage() {
+      return (
+        "data:image/svg+xml;utf8," +
+        encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="120" height="160">
+            <rect width="100%" height="100%" fill="#e5e7eb"/>
+            <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+              font-size="14" fill="#6b7280">NO IMAGE</text>
+          </svg>
+        `)
+      );
     }
 
     renderBooks(books);
@@ -45,8 +58,8 @@
       const keyword = searchInput.value.toLowerCase();
 
       const filtered = books.filter(book =>
-        book.title.toLowerCase().includes(keyword) ||
-        book.author.toLowerCase().includes(keyword)
+        (book.title || "").toLowerCase().includes(keyword) ||
+        (book.author || "").toLowerCase().includes(keyword)
       );
 
       renderBooks(filtered);
@@ -60,22 +73,39 @@
 
       list.forEach(book => {
         const card = document.createElement("div");
-        card.className = "card";
+        card.className = "card book-card";
+
+        const cover = document.createElement("img");
+        cover.className = "book-cover";
+        cover.src = book.thumbnail || getFallbackImage();
+        cover.alt = `${book.title || "書籍"} の表紙`;
+
+        const content = document.createElement("div");
+        content.className = "book-card-body";
 
         const title = document.createElement("h3");
         const author = document.createElement("p");
-        const status = document.createElement("p");
         const meta = document.createElement("p");
+        const status = document.createElement("p");
 
-        title.innerHTML = highlight(book.title, keyword);
-        author.innerHTML = highlight(book.author, keyword);
+        title.innerHTML = highlight(book.title || "タイトル不明", keyword);
+        author.innerHTML = highlight(book.author || "著者不明", keyword);
+
         meta.className = "meta-text";
         meta.textContent = `ISBN: ${book.isbn}`;
 
         if (book.loan) {
           status.textContent = `貸出中：${book.loan.user} (${book.loan.date})`;
           status.className = "loan";
+        } else {
+          status.textContent = "所蔵中";
+          status.className = "available";
+        }
 
+        const actionRow = document.createElement("div");
+        actionRow.className = "card-action-row";
+
+        if (book.loan) {
           const returnBtn = document.createElement("button");
           returnBtn.textContent = "返却";
           returnBtn.className = "primary-btn";
@@ -83,11 +113,8 @@
             returnBook(book.isbn);
             location.reload();
           };
-          card.appendChild(returnBtn);
+          actionRow.appendChild(returnBtn);
         } else {
-          status.textContent = "所蔵中";
-          status.className = "available";
-
           const loanBtn = document.createElement("button");
           loanBtn.textContent = "貸出";
           loanBtn.className = "secondary-btn";
@@ -97,7 +124,7 @@
             loanBook(book.isbn, user);
             location.reload();
           };
-          card.appendChild(loanBtn);
+          actionRow.appendChild(loanBtn);
         }
 
         const delBtn = document.createElement("button");
@@ -107,12 +134,16 @@
           deleteBook(book.isbn);
           location.reload();
         };
+        actionRow.appendChild(delBtn);
 
-        card.appendChild(title);
-        card.appendChild(author);
-        card.appendChild(meta);
-        card.appendChild(status);
-        card.appendChild(delBtn);
+        content.appendChild(title);
+        content.appendChild(author);
+        content.appendChild(meta);
+        content.appendChild(status);
+        content.appendChild(actionRow);
+
+        card.appendChild(cover);
+        card.appendChild(content);
 
         container.appendChild(card);
       });
