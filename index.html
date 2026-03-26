@@ -2,27 +2,52 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>書籍管理</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <main class="container">
+    <header class="page-header">
+      <h1>📷 書籍スキャン</h1>
+      <p class="subtext">ガイド枠の中に書籍バーコードを合わせてください</p>
+    </header>
 
-<h1>📷 書籍スキャン</h1>
+    <section class="scanner-card">
+      <div class="camera-wrap">
+        <video id="camera" autoplay playsinline></video>
 
-<video id="camera" autoplay playsinline></video>
+        <div class="scan-overlay" aria-hidden="true">
+          <div class="scan-guide">
+            <div class="corner top-left"></div>
+            <div class="corner top-right"></div>
+            <div class="corner bottom-left"></div>
+            <div class="corner bottom-right"></div>
+            <div class="scan-line"></div>
+          </div>
+        </div>
+      </div>
 
-<p>読み取り結果: <span id="result">なし</span></p>
-<p id="bookInfo"></p>
+      <div class="result-box">
+        <p class="label">読み取り結果</p>
+        <p id="result" class="result-text">なし</p>
+        <p id="bookInfo" class="book-info"></p>
+        <p id="bookStatus" class="book-info"></p>
+      </div>
 
-<button id="searchBtn" style="display:none;">検索</button>
-<button id="saveBtn" style="display:none;">登録</button>
+      <div class="button-group">
+        <button id="saveBtn" class="secondary-btn" style="display:none;">登録</button>
+      </div>
+    </section>
 
-<p><a href="books.html">📚 蔵書一覧へ</a></p>
+    <nav class="bottom-nav">
+      <a href="books.html" class="link-btn">📚 蔵書一覧へ</a>
+    </nav>
+  </main>
 
-<script src="js/storage.js"></script>
-<script src="js/api.js"></script>
-<script src="js/script.js"></script>
-
+  <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/script.js"></script>
 </body>
 </html>

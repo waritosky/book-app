@@ -2,121 +2,121 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>蔵書一覧</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <main class="container">
+    <header class="page-header">
+      <h1>📚 蔵書一覧</h1>
+      <p id="count" class="count-text"></p>
+    </header>
 
-<h1>📚 蔵書一覧</h1>
-<p id="count"></p>
-<input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
-<div id="bookList" class="grid"></div>
+    <section class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
+    </section>
 
-<p><a href="index.html">← 戻る</a></p>
+    <div id="bookList" class="grid"></div>
 
-<script src="js/storage.js"></script>
-<script>
-const container = document.getElementById("bookList");
-const books = getBooks();
-const searchInput = document.getElementById("searchInput");
-const countEl = document.getElementById("count");
+    <nav class="bottom-nav">
+      <a href="index.html" class="link-btn">← スキャン画面へ戻る</a>
+    </nav>
+  </main>
 
-function normalize(text) {
-  return text.toLowerCase()
-    .replace(/[ァ-ン]/g, s =>
-      String.fromCharCode(s.charCodeAt(0) - 0x60)
-    );
-}
+  <script src="js/storage.js"></script>
+  <script>
+    const container = document.getElementById("bookList");
+    const books = getBooks();
+    const searchInput = document.getElementById("searchInput");
+    const countEl = document.getElementById("count");
 
-// 初期表示
-renderBooks(books);
+    function highlight(text, keyword) {
+      if (!keyword) return text;
 
-// 入力時に検索
-searchInput.addEventListener("input", () => {
-  const keyword = normalize(searchInput.value);
-
-  const filtered = books.filter(book =>
-    normalize(book.title).includes(keyword) ||
-    normalize(book.author).includes(keyword)
-  );
-
-  renderBooks(filtered);
-});
-
-function highlight(text, keyword) {
-  if (!keyword) return text;
-
-  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, "gi");
-
-  return text.replace(regex, "<mark>$1</mark>");
-}
-
-// 描画関数
-function renderBooks(list) {
-  container.innerHTML = "";
-
-  countEl.textContent = `${list.length}件`;
-
-  const keyword = searchInput.value;
-
-  list.forEach(book => {
-    const card = document.createElement("div");
-    card.className = "card";
-
-    const title = document.createElement("h3");
-    const author = document.createElement("p");
-
-    title.innerHTML = highlight(book.title, keyword);
-    author.innerHTML = highlight(book.author, keyword);
-
-    const status = document.createElement("p");
-
-    if (book.loan) {
-      status.textContent = `貸出中：${book.loan.user} (${book.loan.date})`;
-      status.className = "loan";
-
-      const returnBtn = document.createElement("button");
-      returnBtn.textContent = "返却";
-      returnBtn.onclick = () => {
-        returnBook(book.isbn);
-        location.reload();
-      };
-
-      card.appendChild(returnBtn);
-
-    } else {
-      status.textContent = "所蔵中";
-      status.className = "available";
-
-      const loanBtn = document.createElement("button");
-      loanBtn.textContent = "貸出";
-      loanBtn.onclick = () => {
-        const user = prompt("貸出相手の名前を入力");
-        if (!user) return;
-        loanBook(book.isbn, user);
-        location.reload();
-      };
-
-      card.appendChild(loanBtn);
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escaped})`, "gi");
+      return text.replace(regex, "<mark>$1</mark>");
     }
 
-    const delBtn = document.createElement("button");
-    delBtn.textContent = "削除";
-    delBtn.onclick = () => {
-      deleteBook(book.isbn);
-      location.reload();
-    };
+    renderBooks(books);
 
-    card.appendChild(title);
-    card.appendChild(author);
-    card.appendChild(status);
-    card.appendChild(delBtn);
+    searchInput.addEventListener("input", () => {
+      const keyword = searchInput.value.toLowerCase();
 
-    container.appendChild(card);
-  });
-}
-</script>
+      const filtered = books.filter(book =>
+        book.title.toLowerCase().includes(keyword) ||
+        book.author.toLowerCase().includes(keyword)
+      );
 
+      renderBooks(filtered);
+    });
+
+    function renderBooks(list) {
+      container.innerHTML = "";
+      countEl.textContent = `${list.length}件`;
+
+      const keyword = searchInput.value;
+
+      list.forEach(book => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const title = document.createElement("h3");
+        const author = document.createElement("p");
+        const status = document.createElement("p");
+        const meta = document.createElement("p");
+
+        title.innerHTML = highlight(book.title, keyword);
+        author.innerHTML = highlight(book.author, keyword);
+        meta.className = "meta-text";
+        meta.textContent = `ISBN: ${book.isbn}`;
+
+        if (book.loan) {
+          status.textContent = `貸出中：${book.loan.user} (${book.loan.date})`;
+          status.className = "loan";
+
+          const returnBtn = document.createElement("button");
+          returnBtn.textContent = "返却";
+          returnBtn.className = "primary-btn";
+          returnBtn.onclick = () => {
+            returnBook(book.isbn);
+            location.reload();
+          };
+          card.appendChild(returnBtn);
+        } else {
+          status.textContent = "所蔵中";
+          status.className = "available";
+
+          const loanBtn = document.createElement("button");
+          loanBtn.textContent = "貸出";
+          loanBtn.className = "secondary-btn";
+          loanBtn.onclick = () => {
+            const user = prompt("貸出相手の名前を入力");
+            if (!user) return;
+            loanBook(book.isbn, user);
+            location.reload();
+          };
+          card.appendChild(loanBtn);
+        }
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "削除";
+        delBtn.className = "danger-btn";
+        delBtn.onclick = () => {
+          deleteBook(book.isbn);
+          location.reload();
+        };
+
+        card.appendChild(title);
+        card.appendChild(author);
+        card.appendChild(meta);
+        card.appendChild(status);
+        card.appendChild(delBtn);
+
+        container.appendChild(card);
+      });
+    }
+  </script>
 </body>
 </html>
