@@ -19,7 +19,7 @@ let lastVibratedCode = null;
 let isProcessingScan = false;
 
 let noDetectionCount = 0;
-const RESET_THRESHOLD = 3; // 約2.4秒（800ms × 3）
+const RESET_THRESHOLD = 12; // 約9.6秒（800ms × 12）
 
 let isContinuousMode = false;
 
