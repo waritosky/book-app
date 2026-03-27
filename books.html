@@ -19,6 +19,12 @@
 
     <div id="bookList" class="grid"></div>
 
+    <div class="pagination" id="pagination">
+      <button id="prevPageBtn" class="secondary-btn">← 前へ</button>
+      <p id="pageInfo" class="page-info"></p>
+      <button id="nextPageBtn" class="secondary-btn">次へ →</button>
+    </div>
+
     <nav class="bottom-nav">
       <a href="index.html" class="link-btn">← スキャン画面へ戻る</a>
     </nav>
@@ -50,8 +56,13 @@
     const toast = document.getElementById("toast");
     const REFRESH_RETRY_DAYS = [1, 3, 7, 14, 30];
     const REFRESH_STOP_AFTER = 6;
+    const prevPageBtn = document.getElementById("prevPageBtn");
+    const nextPageBtn = document.getElementById("nextPageBtn");
+    const pageInfo = document.getElementById("pageInfo");
 
     let targetIsbn = null;
+    let currentPage = 1;
+    let currentFilteredBooks = [];
 
     function highlight(text, keyword) {
       if (!keyword) return text;
@@ -95,6 +106,19 @@
         modal.style.display = "none";
         targetIsbn = null;
       }
+    };
+
+    prevPageBtn.onclick = () => {
+      if (currentPage <= 1) return;
+      currentPage--;
+      renderBooks(currentFilteredBooks);
+    };
+
+    nextPageBtn.onclick = () => {
+      const totalPages = Math.max(1, Math.ceil(currentFilteredBooks.length / getItemsPerPage()));
+      if (currentPage >= totalPages) return;
+      currentPage++;
+      renderBooks(currentFilteredBooks);
     };
 
     function showToast(message) {
@@ -266,12 +290,36 @@
 
       const keyword = searchInput.value.toLowerCase();
 
-      const filtered = books.filter(book =>
+      currentFilteredBooks = books.filter(book =>
         (book.title || "").toLowerCase().includes(keyword) ||
         (book.author || "").toLowerCase().includes(keyword)
       );
 
-      renderBooks(filtered);
+      updatePagination(currentFilteredBooks.length);
+      renderBooks(currentFilteredBooks);
+    }
+
+    function getItemsPerPage() {
+      const height = window.innerHeight;
+
+      if (height >= 900) return 12;
+      if (height >= 760) return 10;
+      if (height >= 640) return 8;
+      return 6;
+    }
+
+    function updatePagination(totalItems) {
+      const itemsPerPage = getItemsPerPage();
+      const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
+      if (currentPage > totalPages) {
+        currentPage = totalPages;
+      }
+
+      pageInfo.textContent = `${currentPage} / ${totalPages}ページ`;
+
+      prevPageBtn.disabled = currentPage <= 1;
+      nextPageBtn.disabled = currentPage >= totalPages;
     }
 
     refreshBooks();
@@ -281,6 +329,7 @@
     }, 0);
 
     searchInput.addEventListener("input", () => {
+      currentPage = 1;
       refreshBooks();
     });
 
@@ -289,8 +338,12 @@
       countEl.textContent = `${list.length}件`;
 
       const keyword = searchInput.value;
+      const itemsPerPage = getItemsPerPage();
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      const pageItems = list.slice(startIndex, endIndex);
 
-      list.forEach(book => {
+      pageItems.forEach(book => {
         const card = document.createElement("div");
         card.className = "card book-card";
 
@@ -339,7 +392,6 @@
           returnBtn.className = "primary-btn";
           returnBtn.onclick = () => {
             returnBook(book.isbn);
-
             showToast(`「${book.title}」を返却しました`);
             refreshBooks();
           };
@@ -353,7 +405,6 @@
             if (!user) return;
 
             loanBook(book.isbn, user);
-
             showToast(`「${book.title}」を貸出しました`);
             refreshBooks();
           };
@@ -386,7 +437,13 @@
 
         container.appendChild(card);
       });
+
+      updatePagination(list.length);
     }
+
+    window.addEventListener("resize", () => {
+      refreshBooks();
+    });
   </script>
 </body>
 </html>
