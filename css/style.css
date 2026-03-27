@@ -476,10 +476,18 @@ mark {
   transform: translateX(-50%) translateY(0);
 }
 
-.list-actions {
-  margin-bottom: 16px;
+.badge-row {
+  margin: 0 0 8px;
 }
 
-.list-actions button {
-  width: 100%;
+.info-missing-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 0.78rem;
+  font-weight: bold;
+  line-height: 1;
+  border: 1px solid #fdba74;
 }
