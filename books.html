@@ -14,7 +14,17 @@
     </header>
 
     <section class="search-box">
-      <input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
+      <div class="search-row">
+        <div class="search-input-wrap">
+          <input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
+          <button id="clearSearchBtn" class="clear-search-btn" type="button" aria-label="検索文字をクリア">×</button>
+        </div>
+
+        <select id="sortOrderSelect" class="sort-select">
+          <option value="asc">書籍名 昇順</option>
+          <option value="desc">書籍名 降順</option>
+        </select>
+      </div>
     </section>
 
     <div id="bookList" class="grid"></div>
@@ -54,11 +64,11 @@
     const confirmBtn = document.getElementById("confirmBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const toast = document.getElementById("toast");
-
     const prevPageBtn = document.getElementById("prevPageBtn");
     const nextPageBtn = document.getElementById("nextPageBtn");
     const pageInfo = document.getElementById("pageInfo");
-
+    const clearSearchBtn = document.getElementById("clearSearchBtn");
+    const sortOrderSelect = document.getElementById("sortOrderSelect");
     const REFRESH_RETRY_DAYS = [1, 3, 7, 14, 30];
     const REFRESH_STOP_AFTER = 6;
 
@@ -125,6 +135,48 @@
       return common / unionSize;
     }
 
+    function getContainScore(target, query) {
+      if (!target || !query) return 0;
+
+      const index = target.indexOf(query);
+      if (index === -1) return 0;
+
+      // 完全一致
+      if (target === query) {
+        return 1.0;
+      }
+
+      // 前方一致
+      if (index === 0) {
+        return 0.92;
+      }
+
+      // 後方一致
+      if (index + query.length === target.length) {
+        return 0.88;
+      }
+
+      // 単語境界っぽい位置（「の」「・」「 」などの直後）
+      const prevChar = target[index - 1] || "";
+      if (/[\s　・の\-]/.test(prevChar)) {
+        return 0.84;
+      }
+
+      // ふつうの部分一致
+      return 0.78;
+    }
+
+    function getLengthBalanceScore(target, query) {
+      if (!target || !query) return 0;
+
+      const shorter = Math.min(target.length, query.length);
+      const longer = Math.max(target.length, query.length);
+
+      if (longer === 0) return 0;
+
+      return shorter / longer;
+    }
+
     function getBookSearchScore(book, keyword) {
       const q = normalizeSearchText(keyword);
       if (!q) return 1;
@@ -134,43 +186,211 @@
 
       let score = 0;
 
-      // 強い部分一致
-      if (title.includes(q)) {
-        score = Math.max(score, 1.0);
+      // --- タイトル一致を最優先 ---
+      const titleContainScore = getContainScore(title, q);
+      const authorContainScore = getContainScore(author, q);
+
+      const titleLengthBalance = getLengthBalanceScore(title, q);
+      const authorLengthBalance = getLengthBalanceScore(author, q);
+
+      if (titleContainScore > 0) {
+        score = Math.max(
+          score,
+          titleContainScore + titleLengthBalance * 0.08
+        );
       }
 
-      if (author.includes(q)) {
-        score = Math.max(score, 0.85);
+      if (authorContainScore > 0) {
+        score = Math.max(
+          score,
+          authorContainScore * 0.82 + authorLengthBalance * 0.06
+        );
       }
 
-      // 逆方向の部分一致（検索語の方が長いケース）
+      // --- 検索語の方が長い場合の救済 ---
       if (title && q.includes(title) && title.length >= 2) {
-        score = Math.max(score, 0.75);
+        score = Math.max(score, 0.72 + titleLengthBalance * 0.08);
       }
 
       if (author && q.includes(author) && author.length >= 2) {
-        score = Math.max(score, 0.65);
+        score = Math.max(score, 0.60 + authorLengthBalance * 0.05);
       }
 
-      // 単語分割っぽい扱い
-      const qParts = q.split(/[\s　]+/).filter(Boolean);
+      // --- クエリをゆるく分割して一部一致も拾う ---
+      const qParts = q
+        .split(/[・\s　]+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+
+      let partialTitleHits = 0;
+      let partialAuthorHits = 0;
+
       for (const part of qParts) {
         if (part.length < 2) continue;
 
         if (title.includes(part)) {
-          score = Math.max(score, 0.9);
+          partialTitleHits++;
         }
 
         if (author.includes(part)) {
-          score = Math.max(score, 0.7);
+          partialAuthorHits++;
         }
       }
 
-      // あいまい一致
-      score = Math.max(score, calcNGramSimilarity(title, q, 2) * 0.9);
-      score = Math.max(score, calcNGramSimilarity(author, q, 2) * 0.7);
+      if (partialTitleHits > 0) {
+        score = Math.max(score, 0.68 + Math.min(partialTitleHits, 3) * 0.05);
+      }
+
+      if (partialAuthorHits > 0) {
+        score = Math.max(score, 0.52 + Math.min(partialAuthorHits, 3) * 0.04);
+      }
+
+      // --- あいまい一致（軽い誤字対策） ---
+      const titleBiGram = calcNGramSimilarity(title, q, 2);
+      const titleTriGram = calcNGramSimilarity(title, q, 3);
+      const authorBiGram = calcNGramSimilarity(author, q, 2);
+
+      score = Math.max(score, titleBiGram * 0.72);
+      score = Math.max(score, titleTriGram * 0.80);
+      score = Math.max(score, authorBiGram * 0.55);
 
       return score;
+    }
+
+    function getSeriesSortInfo(book) {
+      const rawTitle = String(book.title || "").trim();
+
+      // 全角数字を半角数字へ
+      const toHalfWidthNumber = value =>
+        String(value).replace(/[０-９]/g, ch =>
+          String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+        );
+
+      function getSpecialVolumeOrder(text) {
+        const normalized = text.trim();
+
+        if (/^(上|上巻)$/.test(normalized)) return 1;
+        if (/^(中|中巻)$/.test(normalized)) return 2;
+        if (/^(下|下巻)$/.test(normalized)) return 3;
+
+        if (/^(前|前編)$/.test(normalized)) return 1;
+        if (/^(中編)$/.test(normalized)) return 2;
+        if (/^(後|後編)$/.test(normalized)) return 3;
+
+        if (/^(序)$/.test(normalized)) return 0;
+        if (/^(完|完結編)$/.test(normalized)) return 9999;
+
+        return null;
+      }
+
+      // 版情報をシリーズ名から除去して寄せる
+      function normalizeEditionSuffix(title) {
+        return title
+          .replace(/[\s　]*【[^】]*】$/g, "")
+          .replace(/[\s　]*\[[^\]]*\]$/g, "")
+          .replace(/[\s　]*\([^)]*\)$/g, "")
+          .replace(/[\s　]*（[^）]*）$/g, "")
+          .replace(/[\s　]*(特装版|限定版|通常版|完全版|愛蔵版|新装版|文庫版|ワイド版|廉価版|復刻版|豪華版|合本版|電子版)$/g, "")
+          .replace(/[\s　]*(特装|限定|完全|愛蔵|新装|文庫|ワイド|廉価|復刻|豪華|合本)$/g, "")
+          .trim();
+      }
+
+      // 数字巻を優先判定
+      const numberPatterns = [
+        /^(.*?)[\s　]*第\s*([0-9０-９]+)\s*巻$/,
+        /^(.*?)[\s　]*([0-9０-９]+)\s*巻$/,
+        /^(.*?)[\s　]*([0-9０-９]+)$/,
+        /^(.*?)[\s　]*\(([0-9０-９]+)\)$/,
+        /^(.*?)[\s　]*（([0-9０-９]+)）$/,
+        /^(.*?)[\s　]*Vol\.?\s*([0-9０-９]+)$/i,
+        /^(.*?)[\s　]*volume\.?\s*([0-9０-９]+)$/i
+      ];
+
+      for (const pattern of numberPatterns) {
+        const match = rawTitle.match(pattern);
+        if (match) {
+          const baseTitle = (match[1] || "").trim();
+          const seriesTitle = normalizeEditionSuffix(baseTitle);
+          const volumeText = toHalfWidthNumber(match[2] || "");
+          const volumeNumber = Number(volumeText);
+
+          return {
+            rawTitle,
+            seriesTitle: seriesTitle || baseTitle || rawTitle,
+            normalizedSeriesTitle: normalizeSearchText(seriesTitle || baseTitle || rawTitle),
+            volumeNumber: Number.isFinite(volumeNumber) ? volumeNumber : null
+          };
+        }
+      }
+
+      // 上・中・下 / 前・後 などを判定
+      const specialPatterns = [
+        /^(.*?)[\s　]*([上下中])$/,
+        /^(.*?)[\s　]*(上巻|中巻|下巻)$/,
+        /^(.*?)[\s　]*([前後])$/,
+        /^(.*?)[\s　]*(前編|中編|後編)$/,
+        /^(.*?)[\s　]*(序|完|完結編)$/
+      ];
+
+      for (const pattern of specialPatterns) {
+        const match = rawTitle.match(pattern);
+        if (match) {
+          const baseTitle = (match[1] || "").trim();
+          const seriesTitle = normalizeEditionSuffix(baseTitle);
+          const specialText = (match[2] || "").trim();
+          const specialOrder = getSpecialVolumeOrder(specialText);
+
+          return {
+            rawTitle,
+            seriesTitle: seriesTitle || baseTitle || rawTitle,
+            normalizedSeriesTitle: normalizeSearchText(seriesTitle || baseTitle || rawTitle),
+            volumeNumber: specialOrder
+          };
+        }
+      }
+
+      // 巻数が無いタイトルでも版情報を落として近くに寄せる
+      const normalizedBaseTitle = normalizeEditionSuffix(rawTitle);
+
+      return {
+        rawTitle,
+        seriesTitle: normalizedBaseTitle || rawTitle,
+        normalizedSeriesTitle: normalizeSearchText(normalizedBaseTitle || rawTitle),
+        volumeNumber: null
+      };
+    }
+
+    function compareBooksByTitleAndVolume(a, b, sortOrder = "asc") {
+      const infoA = getSeriesSortInfo(a);
+      const infoB = getSeriesSortInfo(b);
+
+      const direction = sortOrder === "desc" ? -1 : 1;
+
+      const seriesCompare = infoA.normalizedSeriesTitle.localeCompare(
+        infoB.normalizedSeriesTitle,
+        "ja"
+      );
+
+      if (seriesCompare !== 0) {
+        return seriesCompare * direction;
+      }
+
+      const volumeA = infoA.volumeNumber;
+      const volumeB = infoB.volumeNumber;
+
+      if (volumeA != null && volumeB != null && volumeA !== volumeB) {
+        return (volumeA - volumeB) * direction;
+      }
+
+      if (volumeA == null && volumeB != null) {
+        return -1 * direction;
+      }
+
+      if (volumeA != null && volumeB == null) {
+        return 1 * direction;
+      }
+
+      return infoA.rawTitle.localeCompare(infoB.rawTitle, "ja") * direction;
     }
 
     function getFallbackImage() {
@@ -331,13 +551,21 @@
       nextPageBtn.disabled = currentPage >= totalPages;
     }
 
+    function updateClearButtonVisibility() {
+      const hasValue = searchInput.value.length > 0;
+      clearSearchBtn.style.display = hasValue ? "flex" : "none";
+    }
+
     function refreshBooks() {
       books = getBooks();
 
-      const keyword = searchInput.value;
+      const keyword = searchInput.value.trim();
+      const sortOrder = sortOrderSelect.value;
 
-      if (!keyword.trim()) {
-        currentFilteredBooks = [...books];
+      if (!keyword) {
+        currentFilteredBooks = [...books].sort((a, b) =>
+          compareBooksByTitleAndVolume(a, b, sortOrder)
+        );
       } else {
         currentFilteredBooks = books
           .map(book => ({
@@ -345,10 +573,19 @@
             score: getBookSearchScore(book, keyword)
           }))
           .filter(item => item.score >= 0.25)
-          .sort((a, b) => b.score - a.score)
+          .sort((a, b) => {
+            // まず一致度順
+            if (b.score !== a.score) {
+              return b.score - a.score;
+            }
+
+            // 一致度が同じなら書籍名＋巻数順
+            return compareBooksByTitleAndVolume(a.book, b.book, sortOrder);
+          })
           .map(item => item.book);
       }
 
+      updateClearButtonVisibility();
       updatePagination(currentFilteredBooks.length);
       renderBooks(currentFilteredBooks);
     }
@@ -442,12 +679,27 @@
         const content = document.createElement("div");
         content.className = "book-card-body";
 
+        const seriesInfo = getSeriesSortInfo(book);
+
+        const seriesLabel = document.createElement("p");
+        seriesLabel.className = "series-label";
+
         const title = document.createElement("h3");
         const author = document.createElement("p");
         const meta = document.createElement("p");
         const status = document.createElement("p");
         const badgeRow = document.createElement("div");
         badgeRow.className = "badge-row";
+
+        const rawTitle = String(book.title || "").trim();
+        const seriesTitleToShow =
+          seriesInfo.seriesTitle && seriesInfo.seriesTitle !== rawTitle
+            ? seriesInfo.seriesTitle
+            : "";
+
+        if (seriesTitleToShow) {
+          seriesLabel.textContent = `シリーズ: ${seriesTitleToShow}`;
+        }
 
         title.innerHTML = highlight(book.title || "タイトル不明", keyword);
         author.innerHTML = highlight(book.author || "著者不明", keyword);
@@ -508,6 +760,10 @@
         };
         actionRow.appendChild(delBtn);
 
+        if (seriesTitleToShow) {
+          content.appendChild(seriesLabel);
+        }
+
         content.appendChild(title);
 
         if (badgeRow.childNodes.length > 0) {
@@ -544,6 +800,18 @@
     };
 
     searchInput.addEventListener("input", () => {
+      currentPage = 1;
+      refreshBooks();
+    });
+
+    clearSearchBtn.onclick = () => {
+      searchInput.value = "";
+      currentPage = 1;
+      refreshBooks();
+      searchInput.focus();
+    };
+
+    sortOrderSelect.addEventListener("change", () => {
       currentPage = 1;
       refreshBooks();
     });
