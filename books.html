@@ -17,10 +17,6 @@
       <input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
     </section>
 
-    <div class="list-actions">
-      <button id="refreshCoversBtn" class="primary-btn">表紙を再取得</button>
-    </div>
-
     <div id="bookList" class="grid"></div>
 
     <nav class="bottom-nav">
@@ -52,7 +48,8 @@
     const confirmBtn = document.getElementById("confirmBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const toast = document.getElementById("toast");
-    const refreshCoversBtn = document.getElementById("refreshCoversBtn");
+    const REFRESH_RETRY_DAYS = [1, 3, 7, 14, 30];
+    const REFRESH_STOP_AFTER = 6;
 
     let targetIsbn = null;
 
@@ -76,10 +73,6 @@
         `)
       );
     }
-
-    refreshCoversBtn.onclick = async () => {
-      await refreshBookCovers();
-    };
 
     confirmBtn.onclick = () => {
       if (!targetIsbn) return;
@@ -122,42 +115,78 @@
     }
 
     async function refreshBookCovers() {
-      refreshCoversBtn.disabled = true;
-      refreshCoversBtn.textContent = "再取得中...";
-
       books = getBooks();
 
       let updatedCount = 0;
+      let metaChanged = false;
 
       for (let i = 0; i < books.length; i++) {
         const book = books[i];
 
         if (!book.isbn || !isBookISBN(book.isbn)) continue;
+        if (!shouldTryRefresh(book)) continue;
 
         try {
           const fetched = await fetchBook(book.isbn);
 
-          if (!fetched) continue;
+          if (!fetched) {
+            markRefreshFailed(book);
+            metaChanged = true;
+            continue;
+          }
 
-          const nextTitle = fetched.title || book.title || "タイトル不明";
-          const nextAuthor = fetched.author || book.author || "著者不明";
-          const nextThumbnail = fetched.thumbnail || book.thumbnail || "";
+          const nextTitle =
+            fetched.title && fetched.title !== "タイトル不明"
+              ? fetched.title
+              : (book.title || "タイトル不明");
 
-          const changed =
+          const nextAuthor =
+            fetched.author && fetched.author !== "著者不明"
+              ? fetched.author
+              : (book.author || "著者不明");
+
+          const nextThumbnail =
+            fetched.thumbnail || book.thumbnail || "";
+
+          const infoImproved =
             nextTitle !== (book.title || "") ||
             nextAuthor !== (book.author || "") ||
             nextThumbnail !== (book.thumbnail || "");
 
-          if (changed) {
+          if (infoImproved) {
             book.title = nextTitle;
             book.author = nextAuthor;
             book.thumbnail = nextThumbnail;
+            markRefreshSucceeded(book);
             updatedCount++;
+            metaChanged = true;
+          } else {
+            markRefreshFailed(book);
+            metaChanged = true;
           }
         } catch (e) {
-          console.error(`表紙再取得エラー: ${book.isbn}`, e);
+          console.error(`書籍情報再取得エラー: ${book.isbn}`, e);
+          markRefreshFailed(book);
+          metaChanged = true;
         }
       }
+
+      if (updatedCount > 0 || metaChanged) {
+        saveBooks(books);
+      }
+
+      if (updatedCount > 0) {
+        refreshBooks();
+        showToast(`${updatedCount}件更新しました`);
+      }
+    }
+
+      if (updatedCount > 0) {
+        saveBooks(books);
+        refreshBooks();
+        showToast(`${updatedCount}件更新しました`);
+      }
+    }
 
       saveBooks(books);
       refreshBooks();
@@ -170,6 +199,86 @@
       } else {
         showToast("更新できる表紙はありませんでした");
       }
+    }
+
+    function needsBookRefresh(book) {
+      const missingThumbnail = !book.thumbnail;
+
+      const missingTitle =
+        !book.title || book.title.trim() === "" || book.title === "タイトル不明";
+
+      const missingAuthor =
+        !book.author || book.author.trim() === "" || book.author === "著者不明";
+
+      return missingThumbnail || missingTitle || missingAuthor;
+    }
+
+    function shouldShowMissingInfoBadge(book) {
+      if (!needsBookRefresh(book)) return false;
+
+      const meta = book.refreshMeta;
+      if (!meta) return false;
+
+      return meta.stopped === true;
+    }
+
+    function getRefreshMeta(book) {
+      if (!book.refreshMeta) {
+        book.refreshMeta = {
+          retryCount: 0,
+          lastTriedAt: "",
+          nextRetryAt: "",
+          stopped: false
+        };
+      }
+
+      return book.refreshMeta;
+    }
+
+    function getRetryDays(retryCount) {
+      return REFRESH_RETRY_DAYS[
+        Math.min(retryCount, REFRESH_RETRY_DAYS.length - 1)
+      ];
+    }
+
+    function shouldTryRefresh(book) {
+      if (!needsBookRefresh(book)) return false;
+
+      const meta = getRefreshMeta(book);
+
+      if (meta.stopped) return false;
+      if (!meta.nextRetryAt) return true;
+
+      return Date.now() >= new Date(meta.nextRetryAt).getTime();
+    }
+
+    function markRefreshSucceeded(book) {
+      book.refreshMeta = {
+        retryCount: 0,
+        lastTriedAt: new Date().toISOString(),
+        nextRetryAt: "",
+        stopped: false
+      };
+    }
+
+    function markRefreshFailed(book) {
+      const meta = getRefreshMeta(book);
+      const now = new Date();
+
+      meta.retryCount += 1;
+      meta.lastTriedAt = now.toISOString();
+
+      if (meta.retryCount >= REFRESH_STOP_AFTER) {
+        meta.stopped = true;
+        meta.nextRetryAt = "";
+        return;
+      }
+
+      const days = getRetryDays(meta.retryCount - 1);
+      const next = new Date(now);
+      next.setDate(next.getDate() + days);
+
+      meta.nextRetryAt = next.toISOString();
     }
 
     function refreshBooks() {
@@ -186,6 +295,10 @@
     }
 
     refreshBooks();
+
+    setTimeout(() => {
+      refreshBookCovers();
+    }, 0);
 
     searchInput.addEventListener("input", () => {
       refreshBooks();
@@ -213,9 +326,18 @@
         const author = document.createElement("p");
         const meta = document.createElement("p");
         const status = document.createElement("p");
+        const badgeRow = document.createElement("div");
+        badgeRow.className = "badge-row";
 
         title.innerHTML = highlight(book.title || "タイトル不明", keyword);
         author.innerHTML = highlight(book.author || "著者不明", keyword);
+
+        if (shouldShowMissingInfoBadge(book)) {
+          const missingBadge = document.createElement("span");
+          missingBadge.className = "info-missing-badge";
+          missingBadge.textContent = "情報不足";
+          badgeRow.appendChild(missingBadge);
+        }
 
         meta.className = "meta-text";
         meta.textContent = `ISBN: ${book.isbn}`;
@@ -269,6 +391,11 @@
         actionRow.appendChild(delBtn);
 
         content.appendChild(title);
+
+        if (badgeRow.childNodes.length > 0) {
+          content.appendChild(badgeRow);
+        }
+
         content.appendChild(author);
         content.appendChild(meta);
         content.appendChild(status);
