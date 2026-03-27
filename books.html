@@ -181,26 +181,6 @@
       }
     }
 
-      if (updatedCount > 0) {
-        saveBooks(books);
-        refreshBooks();
-        showToast(`${updatedCount}件更新しました`);
-      }
-    }
-
-      saveBooks(books);
-      refreshBooks();
-
-      refreshCoversBtn.disabled = false;
-      refreshCoversBtn.textContent = "表紙を再取得";
-
-      if (updatedCount > 0) {
-        showToast(`${updatedCount}件更新しました`);
-      } else {
-        showToast("更新できる表紙はありませんでした");
-      }
-    }
-
     function needsBookRefresh(book) {
       const missingThumbnail = !book.thumbnail;
 
