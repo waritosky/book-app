@@ -475,3 +475,11 @@ mark {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+.list-actions {
+  margin-bottom: 16px;
+}
+
+.list-actions button {
+  width: 100%;
+}
