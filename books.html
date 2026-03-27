@@ -54,15 +54,24 @@
     const confirmBtn = document.getElementById("confirmBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const toast = document.getElementById("toast");
-    const REFRESH_RETRY_DAYS = [1, 3, 7, 14, 30];
-    const REFRESH_STOP_AFTER = 6;
+
     const prevPageBtn = document.getElementById("prevPageBtn");
     const nextPageBtn = document.getElementById("nextPageBtn");
     const pageInfo = document.getElementById("pageInfo");
 
+    const REFRESH_RETRY_DAYS = [1, 3, 7, 14, 30];
+    const REFRESH_STOP_AFTER = 6;
+
     let targetIsbn = null;
+    let toastTimer = null;
+    let toastHideTimer = null;
+
     let currentPage = 1;
     let currentFilteredBooks = [];
+
+    // スマホのアドレスバー開閉で高さが細かく変わっても暴れないようにする
+    let lastViewportWidth = window.innerWidth;
+    let lastItemsPerPage = getItemsPerPage();
 
     function highlight(text, keyword) {
       if (!keyword) return text;
@@ -83,6 +92,26 @@
           </svg>
         `)
       );
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.style.display = "block";
+
+      if (toastTimer) clearTimeout(toastTimer);
+      if (toastHideTimer) clearTimeout(toastHideTimer);
+
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
+      });
+
+      toastTimer = setTimeout(() => {
+        toast.classList.remove("show");
+
+        toastHideTimer = setTimeout(() => {
+          toast.style.display = "none";
+        }, 200);
+      }, 1200);
     }
 
     confirmBtn.onclick = () => {
@@ -107,103 +136,6 @@
         targetIsbn = null;
       }
     };
-
-    prevPageBtn.onclick = () => {
-      if (currentPage <= 1) return;
-      currentPage--;
-      renderBooks(currentFilteredBooks);
-    };
-
-    nextPageBtn.onclick = () => {
-      const totalPages = Math.max(1, Math.ceil(currentFilteredBooks.length / getItemsPerPage()));
-      if (currentPage >= totalPages) return;
-      currentPage++;
-      renderBooks(currentFilteredBooks);
-    };
-
-    function showToast(message) {
-      toast.textContent = message;
-      toast.style.display = "block";
-
-      requestAnimationFrame(() => {
-        toast.classList.add("show");
-      });
-
-      setTimeout(() => {
-        toast.classList.remove("show");
-
-        setTimeout(() => {
-          toast.style.display = "none";
-        }, 200);
-      }, 1200);
-    }
-
-    async function refreshBookCovers() {
-      books = getBooks();
-
-      let updatedCount = 0;
-      let metaChanged = false;
-
-      for (let i = 0; i < books.length; i++) {
-        const book = books[i];
-
-        if (!book.isbn || !isBookISBN(book.isbn)) continue;
-        if (!shouldTryRefresh(book)) continue;
-
-        try {
-          const fetched = await fetchBook(book.isbn);
-
-          if (!fetched) {
-            markRefreshFailed(book);
-            metaChanged = true;
-            continue;
-          }
-
-          const nextTitle =
-            fetched.title && fetched.title !== "タイトル不明"
-              ? fetched.title
-              : (book.title || "タイトル不明");
-
-          const nextAuthor =
-            fetched.author && fetched.author !== "著者不明"
-              ? fetched.author
-              : (book.author || "著者不明");
-
-          const nextThumbnail =
-            fetched.thumbnail || book.thumbnail || "";
-
-          const infoImproved =
-            nextTitle !== (book.title || "") ||
-            nextAuthor !== (book.author || "") ||
-            nextThumbnail !== (book.thumbnail || "");
-
-          if (infoImproved) {
-            book.title = nextTitle;
-            book.author = nextAuthor;
-            book.thumbnail = nextThumbnail;
-            markRefreshSucceeded(book);
-            updatedCount++;
-            metaChanged = true;
-          } else {
-            markRefreshFailed(book);
-            metaChanged = true;
-          }
-        } catch (e) {
-          console.error(`書籍情報再取得エラー: ${book.isbn}`, e);
-          markRefreshFailed(book);
-          metaChanged = true;
-        }
-      }
-
-      if (updatedCount > 0 || metaChanged) {
-        saveBooks(books);
-      }
-
-      if (updatedCount > 0) {
-        refreshBooks();
-        showToast(`${updatedCount}件更新しました`);
-      }
-    }
 
     function needsBookRefresh(book) {
       const missingThumbnail = !book.thumbnail;
@@ -285,27 +217,13 @@
       meta.nextRetryAt = next.toISOString();
     }
 
-    function refreshBooks() {
-      books = getBooks();
-
-      const keyword = searchInput.value.toLowerCase();
-
-      currentFilteredBooks = books.filter(book =>
-        (book.title || "").toLowerCase().includes(keyword) ||
-        (book.author || "").toLowerCase().includes(keyword)
-      );
-
-      updatePagination(currentFilteredBooks.length);
-      renderBooks(currentFilteredBooks);
-    }
-
     function getItemsPerPage() {
       const height = window.innerHeight;
 
-      if (height >= 900) return 12;
-      if (height >= 760) return 10;
-      if (height >= 640) return 8;
-      return 6;
+      if (height >= 900) return 10;
+      if (height >= 760) return 8;
+      if (height >= 640) return 6;
+      return 5;
     }
 
     function updatePagination(totalItems) {
@@ -322,16 +240,86 @@
       nextPageBtn.disabled = currentPage >= totalPages;
     }
 
-    refreshBooks();
+    function refreshBooks() {
+      books = getBooks();
 
-    setTimeout(() => {
-      refreshBookCovers();
-    }, 0);
+      const keyword = searchInput.value.toLowerCase();
 
-    searchInput.addEventListener("input", () => {
-      currentPage = 1;
-      refreshBooks();
-    });
+      currentFilteredBooks = books.filter(book =>
+        (book.title || "").toLowerCase().includes(keyword) ||
+        (book.author || "").toLowerCase().includes(keyword)
+      );
+
+      updatePagination(currentFilteredBooks.length);
+      renderBooks(currentFilteredBooks);
+    }
+
+    async function refreshBookCovers() {
+      books = getBooks();
+
+      let updatedCount = 0;
+      let metaChanged = false;
+
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i];
+
+        if (!book.isbn || !isBookISBN(book.isbn)) continue;
+        if (!shouldTryRefresh(book)) continue;
+
+        try {
+          const fetched = await fetchBook(book.isbn);
+
+          if (!fetched) {
+            markRefreshFailed(book);
+            metaChanged = true;
+            continue;
+          }
+
+          const nextTitle =
+            fetched.title && fetched.title !== "タイトル不明"
+              ? fetched.title
+              : (book.title || "タイトル不明");
+
+          const nextAuthor =
+            fetched.author && fetched.author !== "著者不明"
+              ? fetched.author
+              : (book.author || "著者不明");
+
+          const nextThumbnail =
+            fetched.thumbnail || book.thumbnail || "";
+
+          const infoImproved =
+            nextTitle !== (book.title || "") ||
+            nextAuthor !== (book.author || "") ||
+            nextThumbnail !== (book.thumbnail || "");
+
+          if (infoImproved) {
+            book.title = nextTitle;
+            book.author = nextAuthor;
+            book.thumbnail = nextThumbnail;
+            markRefreshSucceeded(book);
+            updatedCount++;
+            metaChanged = true;
+          } else {
+            markRefreshFailed(book);
+            metaChanged = true;
+          }
+        } catch (e) {
+          console.error(`書籍情報再取得エラー: ${book.isbn}`, e);
+          markRefreshFailed(book);
+          metaChanged = true;
+        }
+      }
+
+      if (updatedCount > 0 || metaChanged) {
+        saveBooks(books);
+      }
+
+      if (updatedCount > 0) {
+        refreshBooks();
+        showToast(`${updatedCount}件更新しました`);
+      }
+    }
 
     function renderBooks(list) {
       container.innerHTML = "";
@@ -441,9 +429,45 @@
       updatePagination(list.length);
     }
 
-    window.addEventListener("resize", () => {
+    prevPageBtn.onclick = () => {
+      if (currentPage <= 1) return;
+      currentPage--;
+      renderBooks(currentFilteredBooks);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    nextPageBtn.onclick = () => {
+      const totalPages = Math.max(1, Math.ceil(currentFilteredBooks.length / getItemsPerPage()));
+      if (currentPage >= totalPages) return;
+      currentPage++;
+      renderBooks(currentFilteredBooks);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    searchInput.addEventListener("input", () => {
+      currentPage = 1;
       refreshBooks();
     });
+
+    window.addEventListener("resize", () => {
+      const widthChanged = Math.abs(window.innerWidth - lastViewportWidth) >= 40;
+      const nextItemsPerPage = getItemsPerPage();
+      const perPageChanged = nextItemsPerPage !== lastItemsPerPage;
+
+      if (!widthChanged && !perPageChanged) {
+        return;
+      }
+
+      lastViewportWidth = window.innerWidth;
+      lastItemsPerPage = nextItemsPerPage;
+      refreshBooks();
+    });
+
+    refreshBooks();
+
+    setTimeout(() => {
+      refreshBookCovers();
+    }, 0);
   </script>
 </body>
 </html>
