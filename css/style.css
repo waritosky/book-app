@@ -513,3 +513,65 @@ mark {
   flex: 1;
   min-width: 0;
 }
+
+.search-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-input-wrap {
+  position: relative;
+}
+
+.clear-search-btn {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #333;
+  font-size: 1rem;
+  font-weight: bold;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.sort-select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid #d0d7e2;
+  border-radius: 12px;
+  font-size: 1rem;
+  background: #fff;
+}
+
+@media (min-width: 600px) {
+  .search-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .search-input-wrap {
+    flex: 1;
+  }
+
+  .sort-select {
+    width: 200px;
+    flex-shrink: 0;
+  }
+}
+
+.series-label {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #6b7280;
+}
