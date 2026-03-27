@@ -17,6 +17,10 @@
       <input type="text" id="searchInput" placeholder="🔍 タイトル・著者で検索">
     </section>
 
+    <div class="list-actions">
+      <button id="refreshCoversBtn" class="primary-btn">表紙を再取得</button>
+    </div>
+
     <div id="bookList" class="grid"></div>
 
     <nav class="bottom-nav">
@@ -37,6 +41,7 @@
   </main>
 
   <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
   <script>
     const container = document.getElementById("bookList");
     let books = getBooks();
@@ -47,6 +52,7 @@
     const confirmBtn = document.getElementById("confirmBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const toast = document.getElementById("toast");
+    const refreshCoversBtn = document.getElementById("refreshCoversBtn");
 
     let targetIsbn = null;
 
@@ -70,6 +76,10 @@
         `)
       );
     }
+
+    refreshCoversBtn.onclick = async () => {
+      await refreshBookCovers();
+    };
 
     confirmBtn.onclick = () => {
       if (!targetIsbn) return;
@@ -109,6 +119,57 @@
           toast.style.display = "none";
         }, 200);
       }, 1200);
+    }
+
+    async function refreshBookCovers() {
+      refreshCoversBtn.disabled = true;
+      refreshCoversBtn.textContent = "再取得中...";
+
+      books = getBooks();
+
+      let updatedCount = 0;
+
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i];
+
+        if (!book.isbn || !isBookISBN(book.isbn)) continue;
+
+        try {
+          const fetched = await fetchBook(book.isbn);
+
+          if (!fetched) continue;
+
+          const nextTitle = fetched.title || book.title || "タイトル不明";
+          const nextAuthor = fetched.author || book.author || "著者不明";
+          const nextThumbnail = fetched.thumbnail || book.thumbnail || "";
+
+          const changed =
+            nextTitle !== (book.title || "") ||
+            nextAuthor !== (book.author || "") ||
+            nextThumbnail !== (book.thumbnail || "");
+
+          if (changed) {
+            book.title = nextTitle;
+            book.author = nextAuthor;
+            book.thumbnail = nextThumbnail;
+            updatedCount++;
+          }
+        } catch (e) {
+          console.error(`表紙再取得エラー: ${book.isbn}`, e);
+        }
+      }
+
+      saveBooks(books);
+      refreshBooks();
+
+      refreshCoversBtn.disabled = false;
+      refreshCoversBtn.textContent = "表紙を再取得";
+
+      if (updatedCount > 0) {
+        showToast(`${updatedCount}件更新しました`);
+      } else {
+        showToast("更新できる表紙はありませんでした");
+      }
     }
 
     function refreshBooks() {
