@@ -491,3 +491,25 @@ mark {
   line-height: 1;
   border: 1px solid #fdba74;
 }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.page-info {
+  margin: 0;
+  min-width: 90px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.pagination button {
+  flex: 1;
+  min-width: 0;
+}
