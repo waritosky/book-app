@@ -76,11 +76,19 @@ async function fetchFromGoogleBooks(isbn) {
       const info = data.items[0].volumeInfo || {};
       const imageLinks = info.imageLinks || {};
 
-      return {
-        title: info.title || "タイトル不明",
-        author: info.authors ? info.authors.join(", ") : "著者不明",
-        thumbnail: pickGoogleThumbnail(imageLinks)
-      };
+      const thumbnail =
+        imageLinks.thumbnail ||
+        imageLinks.smallThumbnail ||
+        imageLinks.small ||
+        imageLinks.medium ||
+        imageLinks.large ||
+        "";
+
+        return {
+          title: info.title || "タイトル不明",
+          author: info.authors ? info.authors.join(", ") : "著者不明",
+          thumbnail: thumbnail ? thumbnail.replace(/^http:\/\//i, "https://").replace("zoom=1", "zoom=2") : ""
+        };
     }
 
     return null;
