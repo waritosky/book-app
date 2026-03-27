@@ -81,6 +81,98 @@
       return text.replace(regex, "<mark>$1</mark>");
     }
 
+    function normalizeSearchText(text) {
+      if (!text) return "";
+
+      return String(text)
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[ァ-ヶ]/g, ch =>
+          String.fromCharCode(ch.charCodeAt(0) - 0x60)
+        )
+        .replace(/\s+/g, "")
+        .replace(/[‐－―ー\-]/g, "")
+        .replace(/[！!？?・,，。.\(\)（）「」『』【】\[\]]/g, "");
+    }
+
+    function getNGrams(text, n = 2) {
+      if (!text) return [];
+      if (text.length < n) return [text];
+
+      const grams = [];
+      for (let i = 0; i <= text.length - n; i++) {
+        grams.push(text.slice(i, i + n));
+      }
+      return grams;
+    }
+
+    function calcNGramSimilarity(a, b, n = 2) {
+      if (!a || !b) return 0;
+
+      const setA = new Set(getNGrams(a, n));
+      const setB = new Set(getNGrams(b, n));
+
+      let common = 0;
+      for (const token of setA) {
+        if (setB.has(token)) {
+          common++;
+        }
+      }
+
+      const unionSize = new Set([...setA, ...setB]).size;
+      if (unionSize === 0) return 0;
+
+      return common / unionSize;
+    }
+
+    function getBookSearchScore(book, keyword) {
+      const q = normalizeSearchText(keyword);
+      if (!q) return 1;
+
+      const title = normalizeSearchText(book.title || "");
+      const author = normalizeSearchText(book.author || "");
+
+      let score = 0;
+
+      // 強い部分一致
+      if (title.includes(q)) {
+        score = Math.max(score, 1.0);
+      }
+
+      if (author.includes(q)) {
+        score = Math.max(score, 0.85);
+      }
+
+      // 逆方向の部分一致（検索語の方が長いケース）
+      if (title && q.includes(title) && title.length >= 2) {
+        score = Math.max(score, 0.75);
+      }
+
+      if (author && q.includes(author) && author.length >= 2) {
+        score = Math.max(score, 0.65);
+      }
+
+      // 単語分割っぽい扱い
+      const qParts = q.split(/[\s　]+/).filter(Boolean);
+      for (const part of qParts) {
+        if (part.length < 2) continue;
+
+        if (title.includes(part)) {
+          score = Math.max(score, 0.9);
+        }
+
+        if (author.includes(part)) {
+          score = Math.max(score, 0.7);
+        }
+      }
+
+      // あいまい一致
+      score = Math.max(score, calcNGramSimilarity(title, q, 2) * 0.9);
+      score = Math.max(score, calcNGramSimilarity(author, q, 2) * 0.7);
+
+      return score;
+    }
+
     function getFallbackImage() {
       return (
         "data:image/svg+xml;utf8," +
@@ -242,12 +334,20 @@
     function refreshBooks() {
       books = getBooks();
 
-      const keyword = searchInput.value.toLowerCase();
+      const keyword = searchInput.value;
 
-      currentFilteredBooks = books.filter(book =>
-        (book.title || "").toLowerCase().includes(keyword) ||
-        (book.author || "").toLowerCase().includes(keyword)
-      );
+      if (!keyword.trim()) {
+        currentFilteredBooks = [...books];
+      } else {
+        currentFilteredBooks = books
+          .map(book => ({
+            book,
+            score: getBookSearchScore(book, keyword)
+          }))
+          .filter(item => item.score >= 0.25)
+          .sort((a, b) => b.score - a.score)
+          .map(item => item.book);
+      }
 
       updatePagination(currentFilteredBooks.length);
       renderBooks(currentFilteredBooks);
