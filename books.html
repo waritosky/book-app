@@ -218,12 +218,11 @@
     }
 
     function getItemsPerPage() {
-      const height = window.innerHeight;
+      const width = window.innerWidth;
 
-      if (height >= 900) return 10;
-      if (height >= 760) return 8;
-      if (height >= 640) return 6;
-      return 5;
+      if (width >= 900) return 12;
+      if (width >= 600) return 10;
+      return 8;
     }
 
     function updatePagination(totalItems) {
@@ -450,16 +449,15 @@
     });
 
     window.addEventListener("resize", () => {
-      const widthChanged = Math.abs(window.innerWidth - lastViewportWidth) >= 40;
-      const nextItemsPerPage = getItemsPerPage();
-      const perPageChanged = nextItemsPerPage !== lastItemsPerPage;
+      const nextWidth = window.innerWidth;
+      const widthChanged = Math.abs(nextWidth - lastViewportWidth) >= 40;
 
-      if (!widthChanged && !perPageChanged) {
+      if (!widthChanged) {
         return;
       }
 
-      lastViewportWidth = window.innerWidth;
-      lastItemsPerPage = nextItemsPerPage;
+      lastViewportWidth = nextWidth;
+      lastItemsPerPage = getItemsPerPage();
       refreshBooks();
     });
 
