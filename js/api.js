@@ -2,6 +2,23 @@ function isBookISBN(code) {
   return code.startsWith("978") || code.startsWith("979");
 }
 
+function toHttps(url) {
+  if (!url) return "";
+  return url.replace(/^http:\/\//i, "https://");
+}
+
+function pickGoogleThumbnail(imageLinks = {}) {
+  return toHttps(
+    imageLinks.thumbnail ||
+    imageLinks.smallThumbnail ||
+    imageLinks.small ||
+    imageLinks.medium ||
+    imageLinks.large ||
+    imageLinks.extraLarge ||
+    ""
+  );
+}
+
 async function fetchFromOpenBD(isbn) {
   try {
     const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${isbn}`);
@@ -9,11 +26,37 @@ async function fetchFromOpenBD(isbn) {
 
     if (data[0]) {
       const summary = data[0].summary || {};
+      const onix = data[0].onix || {};
+
+      let thumbnail = "";
+
+      if (summary.cover) {
+        thumbnail = summary.cover;
+      } else if (
+        onix.DescriptiveDetail &&
+        Array.isArray(onix.DescriptiveDetail.SupportingResource)
+      ) {
+        const resources = onix.DescriptiveDetail.SupportingResource;
+
+        const imageResource = resources.find(resource => {
+          const contentType = resource.ResourceContentType;
+          return contentType === "01" || contentType === "03";
+        });
+
+        if (
+          imageResource &&
+          Array.isArray(imageResource.ResourceVersion) &&
+          imageResource.ResourceVersion.length > 0
+        ) {
+          thumbnail =
+            imageResource.ResourceVersion[0].ResourceLink || "";
+        }
+      }
 
       return {
         title: summary.title || "タイトル不明",
         author: summary.author || "著者不明",
-        thumbnail: summary.cover || ""
+        thumbnail: toHttps(thumbnail)
       };
     }
 
@@ -36,7 +79,7 @@ async function fetchFromGoogleBooks(isbn) {
       return {
         title: info.title || "タイトル不明",
         author: info.authors ? info.authors.join(", ") : "著者不明",
-        thumbnail: imageLinks.thumbnail || imageLinks.smallThumbnail || ""
+        thumbnail: pickGoogleThumbnail(imageLinks)
       };
     }
 
